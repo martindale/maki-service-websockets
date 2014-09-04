@@ -147,7 +147,7 @@ MyWebSocketServer.prototype.bind = function( maki ) {
     if (maki.debug) console.log('[SOCKETS] unhandled socket upgrade' , ws.upgradeReq.url );
   });
 
-  var jsonRPC = require('../jsonrpc');
+  var jsonRPC = maki.JSONRPC;
   self.server.forEachClient = function(fn) {
     var self = this;
     for (var i in this.clients) {
