@@ -1,0 +1,23 @@
+{
+  "name": "maki-service-websockets",
+  "version": "0.1.0",
+  "description": "provide maki resources to websocket clients",
+  "main": "index.js",
+  "scripts": {
+    "test": "mocha"
+  },
+  "keywords": [
+    "websockets",
+    "ws",
+    "maki",
+    "framework",
+    "rest",
+    "routing"
+  ],
+  "author": "Eric Martindale",
+  "license": "MIT",
+  "dependencies": {
+    "path-to-regexp": "^1.0.1",
+    "redis": "^0.12.1"
+  }
+}
