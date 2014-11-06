@@ -18,7 +18,11 @@
   "license": "MIT",
   "dependencies": {
     "path-to-regexp": "^1.0.1",
-    "redis": "^0.12.1",
     "ws": "^0.4.32"
+  },
+  "devDependencies": {
+    "maki": "git://github.com/martindale/maki",
+    "mocha": "^2.0.1",
+    "restler": "^3.2.2"
   }
 }

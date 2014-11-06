@@ -1,12 +1,14 @@
-var redis = require('redis');
+var jsonRPC     = require('maki-jsonrpc');
 var pathToRegex = require('path-to-regexp');
 
 var MyWebSocketServer = function() {
-  
-}
+
+};
 
 MyWebSocketServer.prototype.bind = function( maki ) {
   var self = this;
+
+  console.log('bind()')
 
   // prepare the websocket server
   var WebSocketServer = require('ws').Server;
@@ -17,27 +19,46 @@ MyWebSocketServer.prototype.bind = function( maki ) {
   self.server = wss;
 
   self.server.on('connection', function(ws) {
+    console.log('connection.')
+
+    ws.on('error', function(err) {
+      if (maki.debug) console.log('[SOCKETS] error', err );
+    });
+
     // determine appropriate resource / handler
     for (var route in maki.routes) {
       var regex = pathToRegex( route );
       // test if this resource should handle the request...
       if ( regex.test( ws.upgradeReq.url ) ) {
-        if (maki.debug) console.log('[SOCKETS] matched ' + ws.upgradeReq.url)
+        console.log('[SOCKETS] matched ' + ws.upgradeReq.url);
+        
+        function handler(channel, message) {
+          console.log('handler', channel );
+          var message = JSON.parse( message );
+
+          ws.send( (new jsonRPC('patch' , {
+              channel: channel
+            , ops: message
+          })).toJSON() , function(err) {
+            if (err && maki.debug) console.log('[SOCKETS] ERROR!', err);
+          });
+        };
 
         // unique identifier for our upcoming mess
         ws.id = ws.upgradeReq.headers['sec-websocket-key'];
 
         // make a mess
-        ws.pongTime = (new Date()).getTime();
-        ws.redis = redis.createClient( maki.config.redis.port , maki.config.redis.host );
-        ws.redis.on('message', function(channel, message) {
-          var message = JSON.parse( message );
-          ws.send( (new jsonRPC('patch' , {
-              channel: channel
-            , ops: message
-          })).toJSON() );
-        });
-        ws.redis.subscribe( ws.upgradeReq.url );
+        ws.pongTime = (new Date()).getTime();// 
+        ws.subscriptions = [ ws.upgradeReq.url ];
+
+        console.log('binding new message event...', ws.id , Object.keys( maki.clients ) , '+1' );
+
+        maki.messenger.on('message', handler );
+        //maki.messenger.subscribe( ws.upgradeReq.url );
+
+        console.log('listeners', maki.messenger.listeners('message').length );
+        console.log('listeners', maki.messenger.listeners('message') );// process.exit();
+        console.log('listeners', maki.messenger._events );// process.exit();
 
         // handle events, mainly pongs
         ws.on('message', function handleClientMessage(msg) {
@@ -84,8 +105,15 @@ MyWebSocketServer.prototype.bind = function( maki ) {
               
               if (maki.debug) console.log( '[SOCKETS] subscribe event, ' , data.params.channel );
 
-              ws.redis.subscribe( data.params.channel );
-              var subscriptions = Object.keys(ws.redis.subscription_set).filter(function(x) {
+              // maki.messenger.subscribe( data.params.channel );
+              // TODO: uncomment the above line to re-support subscribe messages
+              // this will involve checking for current subscriptions and only 
+              // subscribing when complete
+              
+              
+              // this was a redis feature, but we're no longer using redis.
+              // TODO: add this functionality to messenger.
+              /*/var subscriptions = Object.keys( maki.messenger.subscription_set ).filter(function(x) {
                 return x;
               }).map(function(x) {
                 return x.substring(4); // removes `sub ` from redis set
@@ -93,7 +121,7 @@ MyWebSocketServer.prototype.bind = function( maki ) {
               
               if (subscriptions.length > 10) {
                 if (maki.debug) console.log('[SOCKETS] warning, oversubscribed');
-              }
+              }/**/
               
               ws.send({
                 'jsonrpc': '2.0',
@@ -117,7 +145,7 @@ MyWebSocketServer.prototype.bind = function( maki ) {
 
               if (maki.debug) console.log( '[SOCKETS] unsubscribe event, ' , data.params.channel );
 
-              ws.redis.unsubscribe( data.params.channel );
+              //maki.messenger.unsubscribe( data.params.channel );
               ws.send({
                 'jsonrpc': '2.0',
                 'result': 'success',
@@ -128,17 +156,28 @@ MyWebSocketServer.prototype.bind = function( maki ) {
           }
         });
 
-        maki.clients[ ws.id ] = ws;
-
         // cleanup our mess
-        ws.on('close', function() {
+        ws.on('close', function() {// 
+          console.log('close');
           if (maki.debug) console.log('[SOCKETS] cleaning expired websocket: ', ws.upgradeReq.headers['sec-websocket-key'] );
-          ws.redis.end();
+
+          //ws.removeAllListeners();
+          
+          console.log('before', maki.messenger.listeners('message').length );
+          
+          maki.messenger.removeListener( 'message', handler );
+          
+          console.log('after', maki.messenger.listeners('message').length );
+          
+          //maki.messenger.unsubscribe( ws.upgradeReq.url );
+          
           if (maki.clients[ ws.upgradeReq.headers['sec-websocket-key'] ]) {
-            maki.clients[ ws.upgradeReq.headers['sec-websocket-key'] ].redis.end();
+            maki.clients[ ws.upgradeReq.headers['sec-websocket-key'] ].removeAllListeners();
             delete maki.clients[ ws.upgradeReq.headers['sec-websocket-key'] ];
           }
         });
+        
+        maki.clients[ ws.id ] = ws;
 
         return; // exit the 'connection' handler
         break; // break the loop
@@ -147,7 +186,6 @@ MyWebSocketServer.prototype.bind = function( maki ) {
     if (maki.debug) console.log('[SOCKETS] unhandled socket upgrade' , ws.upgradeReq.url );
   });
 
-  var jsonRPC = maki.JSONRPC;
   self.server.forEachClient = function(fn) {
     var self = this;
     for (var i in this.clients) {
@@ -163,7 +201,7 @@ MyWebSocketServer.prototype.bind = function( maki ) {
       // if the last pong from this client is less than the timeout,
       // emit a close event and let the handler clean up after us.
       if (client.pongTime < now - maki.config.sockets.timeout) {
-        //console.log('would normally emit a close event here', client.id , client.pongTime , now - config.sockets.timeout );
+        console.log('would normally emit a close event here', client.id , client.pongTime , now - maki.config.sockets.timeout );
         client.emit('close');
       }
     });
