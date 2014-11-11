@@ -8,8 +8,6 @@ var MyWebSocketServer = function() {
 MyWebSocketServer.prototype.bind = function( maki ) {
   var self = this;
 
-  console.log('bind()')
-
   // prepare the websocket server
   var WebSocketServer = require('ws').Server;
   var wss = new WebSocketServer({
@@ -19,7 +17,6 @@ MyWebSocketServer.prototype.bind = function( maki ) {
   self.server = wss;
 
   self.server.on('connection', function(ws) {
-    console.log('connection.')
 
     ws.on('error', function(err) {
       if (maki.debug) console.log('[SOCKETS] error', err );
@@ -29,11 +26,9 @@ MyWebSocketServer.prototype.bind = function( maki ) {
     for (var route in maki.routes) {
       var regex = pathToRegex( route );
       // test if this resource should handle the request...
-      if ( regex.test( ws.upgradeReq.url ) ) {
-        console.log('[SOCKETS] matched ' + ws.upgradeReq.url);
+      if ( regex.test( ws.upgradeReq.url ) ) {// 
         
         function handler(channel, message) {
-          console.log('handler', channel );
           var message = JSON.parse( message );
 
           ws.send( (new jsonRPC('patch' , {
@@ -51,14 +46,8 @@ MyWebSocketServer.prototype.bind = function( maki ) {
         ws.pongTime = (new Date()).getTime();// 
         ws.subscriptions = [ ws.upgradeReq.url ];
 
-        console.log('binding new message event...', ws.id , Object.keys( maki.clients ) , '+1' );
-
         maki.messenger.on('message', handler );
         //maki.messenger.subscribe( ws.upgradeReq.url );
-
-        console.log('listeners', maki.messenger.listeners('message').length );
-        console.log('listeners', maki.messenger.listeners('message') );// process.exit();
-        console.log('listeners', maki.messenger._events );// process.exit();
 
         // handle events, mainly pongs
         ws.on('message', function handleClientMessage(msg) {
@@ -158,17 +147,9 @@ MyWebSocketServer.prototype.bind = function( maki ) {
 
         // cleanup our mess
         ws.on('close', function() {// 
-          console.log('close');
           if (maki.debug) console.log('[SOCKETS] cleaning expired websocket: ', ws.upgradeReq.headers['sec-websocket-key'] );
 
-          //ws.removeAllListeners();
-          
-          console.log('before', maki.messenger.listeners('message').length );
-          
           maki.messenger.removeListener( 'message', handler );
-          
-          console.log('after', maki.messenger.listeners('message').length );
-          
           //maki.messenger.unsubscribe( ws.upgradeReq.url );
           
           if (maki.clients[ ws.upgradeReq.headers['sec-websocket-key'] ]) {
