@@ -1,6 +1,6 @@
 {
   "name": "maki-service-websockets",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "provide maki resources to websocket clients",
   "main": "index.js",
   "scripts": {
