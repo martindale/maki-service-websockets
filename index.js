@@ -1,12 +1,14 @@
-var jsonRPC     = require('maki-jsonrpc');
+var JSONRPC     = require('maki-jsonrpc');
 var pathToRegex = require('path-to-regexp');
 
-var MyWebSocketServer = function() {
-
+var WebSocketServer = function() {
+  // LOL.  constructors are for the dogs and the vagrants!
 };
 
-MyWebSocketServer.prototype.bind = function( maki ) {
+WebSocketServer.prototype.bind = function( maki ) {
   var self = this;
+  
+  self.maki = maki;
 
   // prepare the websocket server
   var WebSocketServer = require('ws').Server;
@@ -26,15 +28,16 @@ MyWebSocketServer.prototype.bind = function( maki ) {
     for (var route in maki.routes) {
       var regex = pathToRegex( route );
       // test if this resource should handle the request...
-      if ( regex.test( ws.upgradeReq.url ) ) {// 
+      if ( regex.test( ws.upgradeReq.url ) ) {
         
         function handler(channel, message) {
           var message = JSON.parse( message );
-
-          ws.send( (new jsonRPC('patch' , {
+          var jsonrpc = new JSONRPC('patch' , {
               channel: channel
             , ops: message
-          })).toJSON() , function(err) {
+          });
+
+          ws.send( jsonrpc.toJSON() , function(err) {
             if (err && maki.debug) console.log('[SOCKETS] ERROR!', err);
           });
         };
@@ -43,14 +46,24 @@ MyWebSocketServer.prototype.bind = function( maki ) {
         ws.id = ws.upgradeReq.headers['sec-websocket-key'];
 
         // make a mess
-        ws.pongTime = (new Date()).getTime();// 
         ws.subscriptions = [ ws.upgradeReq.url ];
 
         maki.messenger.on('message', handler );
         //maki.messenger.subscribe( ws.upgradeReq.url );
 
         // handle events, mainly pongs
-        ws.on('message', function handleClientMessage(msg) {
+        ws.on('message', function handleClientMessage(msg) {// 
+          
+          var timeReceived = now = (new Date()).getTime();
+          
+          // update the pongTime based on this new message
+          ws.pongTime = timeReceived;
+          console.log('ws.pongTime', ws.pongTime );
+          
+          
+          console.log('OHEYYYYY TIMEOUT' , now - self.maki.config.sockets.timeout );
+          
+          
           try {
             var data = JSON.parse( msg );
           } catch (e) {
@@ -73,12 +86,11 @@ MyWebSocketServer.prototype.bind = function( maki ) {
               }
             }));
           }
-          
-          if (data.result === 'pong') {
-            ws.pongTime = (new Date()).getTime();
-          }
 
           switch( data.method ) {
+            case 'echo':
+              ws.send( msg );
+            break;
             case 'subscribe':
               // fail early
               if (!data.params.channel) {
@@ -147,7 +159,7 @@ MyWebSocketServer.prototype.bind = function( maki ) {
 
         // cleanup our mess
         ws.on('close', function() {// 
-          if (maki.debug) console.log('[SOCKETS] cleaning expired websocket: ', ws.upgradeReq.headers['sec-websocket-key'] );
+          if (maki.debug) console.log('[SOCKETS] cleaning closed websocket: ', ws.upgradeReq.headers['sec-websocket-key'] );
 
           maki.messenger.removeListener( 'message', handler );
           //maki.messenger.unsubscribe( ws.upgradeReq.url );
@@ -166,32 +178,40 @@ MyWebSocketServer.prototype.bind = function( maki ) {
     }
     if (maki.debug) console.log('[SOCKETS] unhandled socket upgrade' , ws.upgradeReq.url );
   });
+};
 
-  self.server.forEachClient = function(fn) {
-    var self = this;
-    for (var i in this.clients) {
-      fn( this.clients[ i ] , i );
-    }
+WebSocketServer.prototype.forEachClient = function(fn) {
+  var self = this;
+  for (var i in self.maki.clients) {
+    fn( self.maki.clients[ i ] , i );
   }
-  self.server.markAndSweep = function() {
-    var message = new jsonRPC('ping');
-    self.server.broadcast( message.toJSON() );
+};
 
-    var now = (new Date()).getTime();
-    this.forEachClient(function( client , id ) {
-      // if the last pong from this client is less than the timeout,
-      // emit a close event and let the handler clean up after us.
-      if (client.pongTime < now - maki.config.sockets.timeout) {
-        console.log('would normally emit a close event here', client.id , client.pongTime , now - maki.config.sockets.timeout );
-        client.emit('close');
-      }
-    });
-  }
-  self.server.broadcast = function(data) {
-    for (var i in this.clients) {
-      this.clients[ i ].send( data );
+WebSocketServer.prototype.markAndSweep = function() {
+  var self = this;
+  var message = new JSONRPC('ping');
+
+  self.broadcast( message.toJSON() );
+
+  var MAXIMUM_CPU_LAG = 1000;
+  var now = (new Date()).getTime();
+  var old = now - self.maki.config.sockets.timeout - MAXIMUM_CPU_LAG;
+  
+  self.forEachClient(function( client , id ) {
+    // if the last pong from this client is less than the timeout,
+    // emit a close event and let the handler clean up after us.
+    if (client.pongTime < old) {
+      console.log('would normally emit a close event here', client.id , client.pongTime , old , 'diff ' + (client.pongTime - old));
+      client.emit('close');
     }
-  };
-}
+  });
+};
 
-module.exports = MyWebSocketServer;
+WebSocketServer.prototype.broadcast = function(data) {
+  var self = this;
+  for (var i in self.maki.clients) {
+    self.maki.clients[ i ].send( data );
+  }
+};
+
+module.exports = WebSocketServer;
