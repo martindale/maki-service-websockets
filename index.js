@@ -58,11 +58,7 @@ WebSocketServer.prototype.bind = function( maki ) {
           
           // update the pongTime based on this new message
           ws.pongTime = timeReceived;
-          console.log('ws.pongTime', ws.pongTime );
-          
-          
-          console.log('OHEYYYYY TIMEOUT' , now - self.maki.config.sockets.timeout );
-          
+          if (maki.debug) console.log('ws.pongTime', ws.pongTime );
           
           try {
             var data = JSON.parse( msg );
@@ -88,6 +84,9 @@ WebSocketServer.prototype.bind = function( maki ) {
           }
 
           switch( data.method ) {
+            default:
+              if (maki.debug) console.log('[SOCKETS] unknown jsonrpc method', data );
+            break;
             case 'echo':
               ws.send( msg );
             break;
@@ -201,7 +200,7 @@ WebSocketServer.prototype.markAndSweep = function() {
     // if the last pong from this client is less than the timeout,
     // emit a close event and let the handler clean up after us.
     if (client.pongTime < old) {
-      console.log('would normally emit a close event here', client.id , client.pongTime , old , 'diff ' + (client.pongTime - old));
+      if (self.maki.debug) console.log('would normally emit a close event here', client.id , client.pongTime , old , 'diff ' + (client.pongTime - old));
       client.emit('close');
     }
   });
